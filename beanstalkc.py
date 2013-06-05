@@ -39,7 +39,7 @@ class SocketError(BeanstalkcException):
     def wrap(wrapped_function, *args, **kwargs):
         try:
             return wrapped_function(*args, **kwargs)
-        except socket.error, err:
+        except socket.error as err:
             raise SocketError(err)
 
 
@@ -69,7 +69,7 @@ class Connection(object):
     def close(self):
         """Close connection to server."""
         try:
-            self._socket.sendall('quit\r\n')
+            self._socket.sendall('quit\r\n'.encode())
             self._socket.close()
         except socket.error:
             pass
@@ -80,11 +80,12 @@ class Connection(object):
         self.connect()
 
     def _interact(self, command, expected_ok, expected_err=[]):
-        SocketError.wrap(self._socket.sendall, command)
-        status, results = self._read_response()
-        if status in expected_ok:
+        SocketError.wrap(self._socket.sendall, command.encode())
+        response = self._read_response()
+        status, results = response
+        if status.decode() in expected_ok:
             return results
-        elif status in expected_err:
+        elif status.decode() in expected_err:
             raise CommandFailed(command.split()[0], status, results)
         else:
             raise UnexpectedResponse(command.split()[0], status, results)
@@ -105,6 +106,7 @@ class Connection(object):
 
     def _interact_value(self, command, expected_ok, expected_err=[]):
         return self._interact(command, expected_ok, expected_err)[0]
+#        return self._interact(command, expected_ok, expected_err)
 
     def _interact_job(self, command, expected_ok, expected_err, reserved=True):
         jid, size = self._interact(command, expected_ok, expected_err)
@@ -119,7 +121,8 @@ class Connection(object):
     def _interact_peek(self, command):
         try:
             return self._interact_job(command, ['FOUND'], ['NOT_FOUND'], False)
-        except CommandFailed, (_, _status, _results):
+        except CommandFailed as xxx_todo_changeme:
+            (_, _status, _results) = xxx_todo_changeme.args
             return None
 
     # -- public interface --
@@ -128,8 +131,9 @@ class Connection(object):
         """Put a job into the current tube. Returns job id."""
         assert isinstance(body, str), 'Job body must be a str instance'
         jid = self._interact_value(
-                'put %d %d %d %d\r\n%s\r\n' %
-                    (priority, delay, ttr, len(body), body),
+                ('put %d %d %d %d\r\n%s\r\n' %
+                    (priority, delay, ttr, len(body), body)),
+#                    (priority, delay, ttr, len(body), body)),
                 ['INSERTED', 'BURIED'], ['JOB_TOO_BIG'])
         return int(jid)
 
@@ -144,7 +148,8 @@ class Connection(object):
             return self._interact_job(command,
                                       ['RESERVED'],
                                       ['DEADLINE_SOON', 'TIMED_OUT'])
-        except CommandFailed, (_, status, results):
+        except CommandFailed as xxx_todo_changeme1:
+            (_, status, results) = xxx_todo_changeme1.args
             if status == 'TIMED_OUT':
                 return None
             elif status == 'DEADLINE_SOON':
@@ -223,7 +228,7 @@ class Connection(object):
 
     def delete(self, jid):
         """Delete a job, by job id."""
-        self._interact('delete %d\r\n' % jid, ['DELETED'], ['NOT_FOUND'])
+        self._interact(('delete %d\r\n' % jid), ['DELETED'], ['NOT_FOUND'])
 
     def release(self, jid, priority=DEFAULT_PRIORITY, delay=0):
         """Release a reserved job back into the ready queue."""
